@@ -141,7 +141,7 @@ dta<-dta%>%
         newdeathssmooth=round(newdeathssmooth, 3),
 
         newcasessmoothpp=round(100*newcasessmooth/pop, 1),   
-        newdeathssmoothpp=round(100*newdeathssmooth/pop, 1)
+        newdeathssmoothpp=round(100*newdeathssmooth/pop, 3)
     )
 
 #data quality problem: cumulative deaths and acses going down in some cases 
@@ -174,7 +174,7 @@ dtacurve<-dta%>%
     arrange(country, date)%>%
     group_by(country)%>%
     mutate(
-        latest=date==max(date)-3, 
+        latest=date==max(date), 
         latestcasespp=newcasessmoothpp, 
         latestcasespp=ifelse(latest==FALSE, NA, latestcasespp)
         )%>%
@@ -189,13 +189,90 @@ dtacurve<-dta%>%
     select(country, region, date, latest, cases, deaths, pop, incidence, cfr, mortality,
            starts_with("new"), starts_with("latest"), starts_with("peak")             )
 
-dim(dta)
+```
+
+
+```{r dtaregion}
+
+dtaregion<-dta%>%
+    select(country, region, date, cases, deaths, pop)%>% 
+    arrange(region, date, country)%>%
+    group_by(region, date)%>%
+    summarise_at(vars(cases, deaths, pop), funs(sum))%>%
+    rename(
+        regioncases=cases, 
+        regiondeaths=deaths,
+        regionpop=pop)%>%
+    mutate(
+        newregioncases=regioncases-lag(regioncases),
+        newregioncases=ifelse(region!=lag(region), NA, newregioncases),
+
+        newregiondeaths=regiondeaths-lag(regiondeaths),
+        newregiondeaths=ifelse(region!=lag(region), NA, newregiondeaths),
+        
+        regionincidence=round(100000*regioncases/(regionpop*1000), 1), # cases per 100,000 regionpop
+        regioncfr=round(100*regiondeaths/regioncases, 1), # deaths per 100 confirmed regioncases   
+        regionmortality=round(100000*regiondeaths/(regionpop*1000), 1) # deaths per 100000 regionpop
+    )%>%
+    arrange(region, date)%>%
+    mutate(
+        newregioncasessmooth =c(NA,NA,NA,NA,NA,NA,rollmean(newregioncases, 7)), 
+        newregiondeathssmooth=c(NA,NA,NA,NA,NA,NA,rollmean(newregiondeaths, 7)), 
+        newregioncasessmooth=ifelse(region !=lag(region ), NA, newregioncasessmooth),
+        newregiondeathssmooth=ifelse(region !=lag(region ), NA, newregiondeathssmooth),
+        newregioncasessmooth =round(newregioncasessmooth, 3),  
+        newregiondeathssmooth=round(newregiondeathssmooth, 3),
+
+        newregioncasessmoothpp=round(100*newregioncasessmooth/regionpop, 1),   
+        newregiondeathssmoothpp=round(100*newregiondeathssmooth/regionpop, 3)
+    )
+
+#data quality problem: cumulative regiondeaths and acses going down in some regioncases 
+    
+    summary(dtaregion$newregioncases)
+    summary(dtaregion$newregiondeaths)
+    temp<-dtaregion%>%filter(newregioncases<0 | newregiondeaths<0)
+    dim(temp)
+
+    head(temp, nrow(temp))
+    
+    temp<-dtaregion%>%filter(newregioncasessmooth<0 | newregiondeathssmooth<0)
+    dim(temp)
+    head(temp, nrow(temp))    
+
+#Force negative smooth numbers to 0 
+
+dtaregion<-dtaregion%>%
+    mutate(
+        newregioncasessmooth   =ifelse(newregioncasessmooth<0,    0, newregioncasessmooth),
+        newregioncasessmoothpp =ifelse(newregioncasessmoothpp<0,  0, newregioncasessmoothpp),
+        newregiondeathssmooth  =ifelse(newregiondeathssmooth<0,   0, newregiondeathssmooth),
+        newregiondeathssmoothpp=ifelse(newregiondeathssmoothpp<0, 0, newregiondeathssmoothpp)
+    )        
+
+```
+
+```{r mregeregiondata}
+colnames(dtacurve)
+colnames(dtaregion)
+
 dim(dtacurve)
+dim(dtaregion)
+dtacurve<-left_join(dtacurve, dtaregion, by = c("region", "date"))
+
+dim(dtacurve)
+```
+
+```{r exportcsv}
 length(unique(dta$country))
 length(unique(dtacurve$country))
 
 write.csv(dtacurve, "dtacurve_global.csv")
 #write.csv(dtacurve, "https://github.com/yoonjoung/COVID19_FlattenedCurve/blob/master/dtacurve_global.csv")
+
+dtacurveBrazil<-dtacurve%>%filter(country=="Brazil")
+length(unique(dtacurveBrazil$country))
+write.csv(dtacurveBrazil, "dtacurve_BrazilExample.csv")
 ```
 
 ###__COVID-19 curves by country__  
@@ -236,11 +313,153 @@ __"COVID-19 status data" for dashboard: dtacurve_global.csv__
 [12] "newdeaths"        
 [13] "newcasessmooth"   
 [14] "newdeathssmooth"  
-[15] "newcasessmoothpp" 7-day rolling average of daily new reported cases per 100,000 pop  
+__[15] "newcasessmoothpp" 7-day rolling average of daily new reported cases per 100,000 pop* __     
 [16] "newdeathssmoothpp"   
-[17] "latestcasespp" latest 7-day rolling average of daily new reported cases per 100,000 pop        
-[18] "peakcasespp" highest daily new reported cases per 100,000 pop for the country (based on 7-day rolling average)          
-[19] "peakdate"  
+__[17] "latestcasespp" latest 7-day rolling average of daily new reported cases per 100,000 pop* __             
+[18] "peakcasespp" highest daily new reported cases per 100,000 pop for the country (based on 7-day rolling average)    
+[19] "peakdate"               
+<span style="color: #1F77B4;">[20] "regioncases" REGIONAL aggregate            
+[21] "regiondeaths" REGIONAL aggregate          
+[22] "regionpop" REGIONAL aggregate              
+[23] "newregioncases" REGIONAL aggregate         
+[24] "newregiondeaths" REGIONAL aggregate        
+[25] "regionincidence" REGIONAL aggregate       
+[26] "regioncfr" REGIONAL aggregate              
+[27] "regionmortality" REGIONAL aggregate       
+[28] "newregioncasessmooth" REGIONAL aggregate     
+[29] "newregiondeathssmooth" REGIONAL aggregate    
+__[30] "newregioncasessmoothpp" REGIONAL aggregate* __    
+[31] "newregiondeathssmoothpp" REGIONAL aggregate</span>     
+
+#####Country examples
+```{r plot_Brazil, results="asis", fig.align="left", out.width="800px", out.height="400px"}
+dtafig<-dtacurve%>%
+    mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
+    filter(country=="Brazil")
+
+mindate<-min(dtacurve$date)
+maxdate<-max(dtacurve$date)
+maxy<-max(dtafig$newcasessmoothpp)
+maxy2<-max(dtafig$newdeathssmoothpp)
+
+dtafig%>% 
+    plot_ly(x = ~date)%>% 
+    add_lines(
+        y = ~newregioncasessmoothpp,
+        line= list(color = "#C1C1C1"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Region: ', region,          
+                      '</br> Date: ', date,
+                      '</br> New cases per 100,000: ', newregioncasessmoothpp)  )%>%
+    add_lines(
+        y = ~newcasessmoothpp,
+        line= list(color = "#395F82"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> New cases per 100,000: ', newcasessmoothpp)  )%>%
+    add_lines(
+        y = ~newdeathssmoothpp,
+        yaxis='y2',
+        line= list(color = "#9B617F"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> New deaths per 100,000: ', newdeathssmoothpp)  )%>%    
+    add_trace(
+        y = ~latestcasespp, type = 'scatter', mode = 'markers',
+        marker = list(size = 1,color ="#073763"),
+        text = ~latestcasespp, 
+        textfont=list(size=10, color="#073763"), 
+        textposition = "bottom left"
+        )%>%   
+    add_annotations(
+        text = ~unique(country),
+        x = 0.5, y = 0.90, xref = "paper", yref = "paper",    
+        xanchor = "center", yanchor = "bottom", showarrow = FALSE,
+        font = list(size = 12)  )%>%
+    layout(
+        showlegend = FALSE,
+        yaxis=list(title="New cases per 100,000" , 
+                   range=c(0,maxy), showgrid = FALSE,
+                   overlaying='y2', side="left"),
+        yaxis2 = list(title = "New deaths per 100,000", 
+                      range=c(0,2), showgrid = FALSE,
+                      side="right"),
+        xaxis=list(title="" , range=c(mindate,maxdate), showgrid = FALSE)
+        ) 
+
+
+```
+
+```{r plot_USA, results="asis", fig.align="left", out.width="800px", out.height="400px"}
+dtafig<-dtacurve%>%
+    mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
+    filter(country=="United States of America")
+
+mindate<-min(dtacurve$date)
+maxdate<-max(dtacurve$date)
+maxy<-max(dtafig$newcasessmoothpp)
+maxy2<-max(dtafig$newdeathssmoothpp)
+
+dtafig%>% 
+    plot_ly(x = ~date)%>% 
+    add_lines(
+        y = ~newregioncasessmoothpp,
+        line= list(color = "#C1C1C1"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Region: ', region,          
+                      '</br> Date: ', date,
+                      '</br> New cases per 100,000: ', newregioncasessmoothpp)  )%>%
+    add_lines(
+        y = ~newcasessmoothpp,
+        line= list(color = "#395F82"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> New cases per 100,000: ', newcasessmoothpp)  )%>%
+    add_lines(
+        y = ~newdeathssmoothpp,
+        yaxis='y2',
+        line= list(color = "#9B617F"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> New deaths per 100,000: ', newdeathssmoothpp)  )%>%    
+    add_trace(
+        y = ~latestcasespp, type = 'scatter', mode = 'markers',
+        marker = list(size = 1,color ="#073763"),
+        text = ~latestcasespp, 
+        textfont=list(size=10, color="#073763"), 
+        textposition = "bottom left"
+        )%>%   
+    add_annotations(
+        text = ~unique(country),
+        x = 0.5, y = 0.90, xref = "paper", yref = "paper",    
+        xanchor = "center", yanchor = "bottom", showarrow = FALSE,
+        font = list(size = 12)  )%>%
+    layout(
+        showlegend = FALSE,
+        yaxis=list(title="New cases per 100,000" , 
+                   range=c(0,maxy), showgrid = FALSE,
+                   overlaying='y2', side="left"),
+        yaxis2 = list(title = "New deaths per 100,000", 
+                      range=c(0,2), showgrid = FALSE,
+                      side="right"),
+        xaxis=list(title="" , range=c(mindate,maxdate), showgrid = FALSE)
+        ) 
+
+maxy<-max(dtafig$newcasessmoothpp)
+maxy2<-max(dtafig$newdeathssmoothpp)
+nobs<-ceiling(length(unique(dtafig$country))/4)
+
+```
 
 ###__2. COVID-19 curve by country in select regions__
 
@@ -258,8 +477,16 @@ panel <- . %>%
         fill = 'tonexty',fillcolor='#EEEEEE', opacity=0.1,
         line= list(color = "#F1F1F1") ) %>%    
     add_lines(
+        y = ~newregioncasessmoothpp,
+        line= list(color = "#C1C1C1"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Region: ', region,          
+                      '</br> Date: ', date,
+                      '</br> New cases per 100,000: ', newregioncasessmoothpp)  )%>%
+    add_lines(
         y = ~newcasessmoothpp,
-        line= list(color = "#073763"),  
+        line= list(color = "#395F82"),  
         hoverinfo = 'text',
         text = ~paste(
                       '</br> Country: ', country,          
@@ -269,7 +496,7 @@ panel <- . %>%
         y = ~latestcasespp, type = 'scatter', mode = 'markers',
         marker = list(size = 1,color ="#073763"),
         text = ~latestcasespp, 
-        textfont=list(size=10, color="red"), 
+        textfont=list(size=10, color="#073763"), 
         textposition = "bottom left"
         )%>%   
     add_annotations(
