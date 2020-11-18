@@ -1,7 +1,7 @@
 # COVID19_Global_Curves
  
 This repository has: 
-- csv dataset for COVID19 curves by country. Detailed note on the csv file is available here: https://rpubs.com/YJ_Choi/COVID19_Global
+- dtacurve_global.csv - dataset for COVID19 curves by country. Detailed note on the csv file is available here: https://rpubs.com/YJ_Choi/COVID19_Global
 - R markdown file to generate the csv dataset from source data (see below)
 
 Note on source Data: 
