@@ -29,17 +29,54 @@ suppressWarnings(suppressMessages(library(lubridate)))
 suppressWarnings(suppressMessages(library(zoo)))
 ```
 
+```{r dtaWHOregion}
+#WHO region classification data from Chelsea Taylor 11/18/2020
+dtawhoregion<-read_excel("C:/Users/YoonJoung Choi/Dropbox/0 Project/COVID19_Global/WHO Country Regions.xlsx")
+str(dtawhoregion)
+
+dtawhoregion<-dtawhoregion%>%
+    rename(country = "Country Name")%>%
+    select(country, WHO_REGION)
+
+#prep for join/merge
+dtawhoregion<-dtawhoregion%>%
+    mutate(
+        country=ifelse(country=="Democratic People's Republic of Korea","Dem. People's Republic of Korea", country), 
+        country=ifelse(country=="Micronesia (Federated States of)", "Micronesia (Fed. States of)", country),
+        country=ifelse(country=="Republic of North Macedonia", "North Macedonia", country),
+        country=ifelse(country=="West Bank and Gaza Strip", "State of Palestine", country),
+        country=ifelse(country=="United Kingdom of Great Britain and Northern Ireland", "United Kingdom", country)
+        )
+```
+
 ```{r dtaPop}
 #estimates:Total population, both sexes combined, as of 1 July (thousands)
 dtapop<-read_excel("C:/Users/YoonJoung Choi/Dropbox/0 Project/COVID19_SouthKorea/WPP2019/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
 
 dtapop<-dtapop%>%
     rename(country = "Region, subregion, country or area *",
-           pop = "2020")%>%
+           pop = "2020",
+           countrycode = "Country code")%>%
     filter(Type=="Country/Area")%>%
     select(country, pop, region)%>%
     mutate(pop=as.numeric(pop))
+```
 
+```{r mergePopWHOregion}
+
+dim(dtapop)
+dim(dtawhoregion)
+
+temp<-full_join(dtapop, dtawhoregion, by = c("country"))%>%
+    mutate(missingpop=is.na(pop))%>%
+    filter(missingpop==TRUE)%>%
+    arrange(country)
+
+#View(temp) #these are all small territoties and countries
+
+dtapop<-left_join(dtapop, dtawhoregion, by = c("country"))
+
+dim(dtapop)
 ```
 
 ```{r dtaCOVID}
@@ -186,57 +223,51 @@ dtacurve<-dta%>%
             peakdate=ifelse(peakcasespp!=newcasessmoothpp, "", peakdate),
             peakdate=ymd(substring(peakdate, 1)) )%>%
     ungroup()%>%
-    select(country, region, date, latest, cases, deaths, pop, incidence, cfr, mortality,
+    select(country, region, WHO_REGION, date, latest, cases, deaths, pop, incidence, cfr, mortality,
            starts_with("new"), starts_with("latest"), starts_with("peak")             )
 
 ```
 
-
 ```{r dtaregion}
 
 dtaregion<-dta%>%
-    select(country, region, date, cases, deaths, pop)%>% 
-    arrange(region, date, country)%>%
-    group_by(region, date)%>%
+    select(country, WHO_REGION, date, cases, deaths, pop)%>% 
+    arrange(WHO_REGION, date, country)%>%
+    group_by(WHO_REGION, date)%>%
     summarise_at(vars(cases, deaths, pop), funs(sum))%>%
-    rename(
-        regioncases=cases, 
-        regiondeaths=deaths,
-        regionpop=pop)%>%
     mutate(
-        newregioncases=regioncases-lag(regioncases),
-        newregioncases=ifelse(region!=lag(region), NA, newregioncases),
+        newcases=cases-lag(cases),
+        newcases=ifelse(WHO_REGION!=lag(WHO_REGION), NA, newcases),
 
-        newregiondeaths=regiondeaths-lag(regiondeaths),
-        newregiondeaths=ifelse(region!=lag(region), NA, newregiondeaths),
+        newdeaths=deaths-lag(deaths),
+        newdeaths=ifelse(WHO_REGION!=lag(WHO_REGION), NA, newdeaths),
         
-        regionincidence=round(100000*regioncases/(regionpop*1000), 1), # cases per 100,000 regionpop
-        regioncfr=round(100*regiondeaths/regioncases, 1), # deaths per 100 confirmed regioncases   
-        regionmortality=round(100000*regiondeaths/(regionpop*1000), 1) # deaths per 100000 regionpop
+        incidence=round(100000*cases/(pop*1000), 1), # confiremd cases per 100,000 pop
+        cfr=round(100*deaths/cases, 1), # deaths per 100 confirmed cases   
+        mortality=round(100000*deaths/(pop*1000), 1) # deaths per 100000 pop
     )%>%
-    arrange(region, date)%>%
+    arrange(WHO_REGION, date)%>%
     mutate(
-        newregioncasessmooth =c(NA,NA,NA,NA,NA,NA,rollmean(newregioncases, 7)), 
-        newregiondeathssmooth=c(NA,NA,NA,NA,NA,NA,rollmean(newregiondeaths, 7)), 
-        newregioncasessmooth=ifelse(region !=lag(region ), NA, newregioncasessmooth),
-        newregiondeathssmooth=ifelse(region !=lag(region ), NA, newregiondeathssmooth),
-        newregioncasessmooth =round(newregioncasessmooth, 3),  
-        newregiondeathssmooth=round(newregiondeathssmooth, 3),
+        newcasessmooth =c(NA,NA,NA,NA,NA,NA,rollmean(newcases, 7)), 
+        newdeathssmooth=c(NA,NA,NA,NA,NA,NA,rollmean(newdeaths, 7)), 
+        newcasessmooth=ifelse(WHO_REGION !=lag(WHO_REGION ), NA, newcasessmooth),
+        newdeathssmooth=ifelse(WHO_REGION !=lag(WHO_REGION ), NA, newdeathssmooth),
+        newcasessmooth =round(newcasessmooth, 3),  
+        newdeathssmooth=round(newdeathssmooth, 3),
 
-        newregioncasessmoothpp=round(100*newregioncasessmooth/regionpop, 1),   
-        newregiondeathssmoothpp=round(100*newregiondeathssmooth/regionpop, 3)
+        newcasessmoothpp=round(100*newcasessmooth/pop, 1),   
+        newdeathssmoothpp=round(100*newdeathssmooth/pop, 3)
     )
 
-#data quality problem: cumulative regiondeaths and acses going down in some regioncases 
+#data quality problem: cumulative deaths and acses going down in some cases 
     
-    summary(dtaregion$newregioncases)
-    summary(dtaregion$newregiondeaths)
-    temp<-dtaregion%>%filter(newregioncases<0 | newregiondeaths<0)
+    summary(dtaregion$newcases)
+    summary(dtaregion$newdeaths)
+    temp<-dtaregion%>%filter(newcases<0 | newdeaths<0)
     dim(temp)
-
     head(temp, nrow(temp))
     
-    temp<-dtaregion%>%filter(newregioncasessmooth<0 | newregiondeathssmooth<0)
+    temp<-dtaregion%>%filter(newcasessmooth<0 | newdeathssmooth<0)
     dim(temp)
     head(temp, nrow(temp))    
 
@@ -244,12 +275,15 @@ dtaregion<-dta%>%
 
 dtaregion<-dtaregion%>%
     mutate(
-        newregioncasessmooth   =ifelse(newregioncasessmooth<0,    0, newregioncasessmooth),
-        newregioncasessmoothpp =ifelse(newregioncasessmoothpp<0,  0, newregioncasessmoothpp),
-        newregiondeathssmooth  =ifelse(newregiondeathssmooth<0,   0, newregiondeathssmooth),
-        newregiondeathssmoothpp=ifelse(newregiondeathssmoothpp<0, 0, newregiondeathssmoothpp)
-    )        
-
+        newcasessmooth   =ifelse(newcasessmooth<0,    0, newcasessmooth),
+        newcasessmoothpp =ifelse(newcasessmoothpp<0,  0, newcasessmoothpp),
+        newdeathssmooth  =ifelse(newdeathssmooth<0,   0, newdeathssmooth),
+        newdeathssmoothpp=ifelse(newdeathssmoothpp<0, 0, newdeathssmoothpp))%>%
+    rename_all(function(x) paste0("region", x))%>%
+    rename(
+        WHO_REGION=regionWHO_REGION, 
+        date=regiondate)
+    
 ```
 
 ```{r mregeregiondata}
@@ -258,9 +292,10 @@ colnames(dtaregion)
 
 dim(dtacurve)
 dim(dtaregion)
-dtacurve<-left_join(dtacurve, dtaregion, by = c("region", "date"))
+dtacurve<-left_join(dtacurve, dtaregion, by = c("WHO_REGION", "date"))
 
 dim(dtacurve)
+colnames(dtacurve)
 ```
 
 ```{r exportcsv}
@@ -300,38 +335,42 @@ __"COVID-19 status data" for dashboard: dtacurve_global.csv__
 * A total of `r ntotal` country-day-specific observations/rows included, as of `r date`.     
 * Variables/Columns:   
  [1] "country"          
- [2] "region" region classification from UN Pop Division           
- [3] "date"             
- [4] "latest" latest date reported for the country                    
- [5] "cases" cumulative number of reported cases                         
- [6] "deaths" cumulative number of reported deaths  
- [7] "pop" population in million                 
- [8] "incidence" reported cases per 100,000 pop          
- [9] "cfr" deaths per 100 reported cases             
-[10] "mortality" deaths per per 100,000 pop        
-[11] "newcases"         
-[12] "newdeaths"        
-[13] "newcasessmooth"   
-[14] "newdeathssmooth"  
-__[15] "newcasessmoothpp" 7-day rolling average of daily new reported cases per 100,000 pop* __     
-[16] "newdeathssmoothpp"   
-__[17] "latestcasespp" latest 7-day rolling average of daily new reported cases per 100,000 pop* __             
-[18] "peakcasespp" highest daily new reported cases per 100,000 pop for the country (based on 7-day rolling average)    
-[19] "peakdate"               
-<span style="color: #1F77B4;">[20] "regioncases" REGIONAL aggregate            
-[21] "regiondeaths" REGIONAL aggregate          
-[22] "regionpop" REGIONAL aggregate              
-[23] "newregioncases" REGIONAL aggregate         
-[24] "newregiondeaths" REGIONAL aggregate        
-[25] "regionincidence" REGIONAL aggregate       
-[26] "regioncfr" REGIONAL aggregate              
-[27] "regionmortality" REGIONAL aggregate       
-[28] "newregioncasessmooth" REGIONAL aggregate     
-[29] "newregiondeathssmooth" REGIONAL aggregate    
-__[30] "newregioncasessmoothpp" REGIONAL aggregate* __    
-[31] "newregiondeathssmoothpp" REGIONAL aggregate</span>     
+ [2] "region" region classification from UN Pop Division    
+ __[3] "WHO_REGION" region classification from WHO* __      
+ [4] "date"             
+ [5] "latest" latest date reported for the country                    
+ [6] "cases" cumulative number of reported cases                         
+ [7] "deaths" cumulative number of reported deaths  
+ [8] "pop" population in million                 
+ [9] "incidence" reported cases per 100,000 pop          
+[10] "cfr" deaths per 100 reported cases             
+[11] "mortality" deaths per per 100,000 pop        
+[12] "newcases"         
+[13] "newdeaths"        
+[14] "newcasessmooth"   
+[15] "newdeathssmooth"  
+__[16] "newcasessmoothpp" 7-day rolling average of daily new reported cases per 100,000 pop* __     
+__[17] "newdeathssmoothpp" 7-day rolling average of daily new deaths per 100,000 pop* __     
+__[18] "latestcasespp" latest 7-day rolling average of daily new reported cases per 100,000 pop* __             
+[19] "peakcasespp" highest daily new reported cases per 100,000 pop for the country (based on 7-day rolling average)    
+[20] "peakdate"               
+<span style="color: #1F77B4;">[21] "regioncases" WHO REGIONAL aggregate            
+[22] "regiondeaths" WHO REGIONAL aggregate          
+[23] "regionpop" WHO REGIONAL aggregate              
+[24] "regionnewcases" WHO REGIONAL aggregate         
+[25] "regionnewdeaths" WHO REGIONAL aggregate        
+[26] "regionincidence" WHO REGIONAL aggregate       
+[27] "regioncfr" WHO REGIONAL aggregate              
+[28] "regionmortality" WHO REGIONAL aggregate       
+[29] "regionnewcasessmooth" WHO REGIONAL aggregate     
+[30] "regionnewdeathssmooth" WHO REGIONAL aggregate    
+__[31] "regionnewcasessmoothpp" WHO REGIONAL aggregate* __    
+[32] "regionnewdeathssmoothpp" WHO REGIONAL aggregate</span>     
 
 #####Country examples
+
+_Note: The blue, pink, and gray lines are new cases, new deaths, and regional new cases, respectively. The x-axis is date since March. The LEFT y-axis is 7-day rolling average of daily new cases per 100,000 population. The RIGHT y-axis is 7-day rolling average of daily new deaths per 100,000 population._  
+
 ```{r plot_Brazil, results="asis", fig.align="left", out.width="800px", out.height="400px"}
 dtafig<-dtacurve%>%
     mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
@@ -345,13 +384,13 @@ maxy2<-max(dtafig$newdeathssmoothpp)
 dtafig%>% 
     plot_ly(x = ~date)%>% 
     add_lines(
-        y = ~newregioncasessmoothpp,
+        y = ~regionnewcasessmoothpp,
         line= list(color = "#C1C1C1"),  
         hoverinfo = 'text',
         text = ~paste(
-                      '</br> Region: ', region,          
+                      '</br> Region: ', WHO_REGION,          
                       '</br> Date: ', date,
-                      '</br> New cases per 100,000: ', newregioncasessmoothpp)  )%>%
+                      '</br> New cases per 100,000: ', regionnewcasessmoothpp)  )%>%
     add_lines(
         y = ~newcasessmoothpp,
         line= list(color = "#395F82"),  
@@ -408,13 +447,13 @@ maxy2<-max(dtafig$newdeathssmoothpp)
 dtafig%>% 
     plot_ly(x = ~date)%>% 
     add_lines(
-        y = ~newregioncasessmoothpp,
+        y = ~regionnewcasessmoothpp,
         line= list(color = "#C1C1C1"),  
         hoverinfo = 'text',
         text = ~paste(
-                      '</br> Region: ', region,          
+                      '</br> Region: ', WHO_REGION,          
                       '</br> Date: ', date,
-                      '</br> New cases per 100,000: ', newregioncasessmoothpp)  )%>%
+                      '</br> New cases per 100,000: ', regionnewcasessmoothpp)  )%>%
     add_lines(
         y = ~newcasessmoothpp,
         line= list(color = "#395F82"),  
@@ -454,11 +493,6 @@ dtafig%>%
                       side="right"),
         xaxis=list(title="" , range=c(mindate,maxdate), showgrid = FALSE)
         ) 
-
-maxy<-max(dtafig$newcasessmoothpp)
-maxy2<-max(dtafig$newdeathssmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
-
 ```
 
 ###__2. COVID-19 curve by country in select regions__
@@ -477,13 +511,13 @@ panel <- . %>%
         fill = 'tonexty',fillcolor='#EEEEEE', opacity=0.1,
         line= list(color = "#F1F1F1") ) %>%    
     add_lines(
-        y = ~newregioncasessmoothpp,
+        y = ~regionnewcasessmoothpp,
         line= list(color = "#C1C1C1"),  
         hoverinfo = 'text',
         text = ~paste(
-                      '</br> Region: ', region,          
+                      '</br> Region: ', WHO_REGION,          
                       '</br> Date: ', date,
-                      '</br> New cases per 100,000: ', newregioncasessmoothpp)  )%>%
+                      '</br> New cases per 100,000: ', regionnewcasessmoothpp)  )%>%
     add_lines(
         y = ~newcasessmoothpp,
         line= list(color = "#395F82"),  
@@ -513,112 +547,38 @@ panel <- . %>%
 ```
 _Note: The x-axis is date since March. The y-axis is 7-day rolling average of daily new cases per 100,000 population. The light gray box represents the number of daily new cases 10 or lower per 100,000._  
 
-####__America__
-
-#####Central America 
-```{r plot_CentralAmerica, results="asis", fig.align="left", out.width="800px", out.height="400px"}
+####__AFRO__
+```{r plot_SouthernAfrica, results="asis", fig.align="left", out.width="800px", out.height="2200px"}
 
 dtafig<-dtacurve%>%
     mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(region=="Central America")
+    filter(WHO_REGION=="AFRO")
 
 maxy<-max(dtafig$newcasessmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
+nobs<-ceiling(length(unique(dtafig$country))/5)
 
 dtafig%>%
     group_by(country) %>%
     do(p = panel(.)) %>%
     subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
 ```
-
-#####South America 
-```{r plot_SouthAmerica, results="asis", fig.align="left", out.width="800px", out.height="600px"}
-
-dtafig<-dtacurve%>%
-    mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(region=="South America")
-
-maxy<-max(dtafig$newcasessmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
-
-dtafig%>%
-    group_by(country) %>%
-    do(p = panel(.)) %>%
-    subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
-```
-
 ---
 
-####__Africa__
-
-#####Eastern Africa 
-```{r plot_EasternAfrica, results="asis", fig.align="left", out.width="800px", out.height="1000px"}
+####__PAHO__ 
+```{r plot_SouthAmerica, results="asis", fig.align="left", out.width="800px", out.height="1600px"}
 
 dtafig<-dtacurve%>%
     mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(region=="Eastern Africa")
+    filter(WHO_REGION=="PAHO")
 
 maxy<-max(dtafig$newcasessmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
+nobs<-ceiling(length(unique(dtafig$country))/5)
 
 dtafig%>%
     group_by(country) %>%
     do(p = panel(.)) %>%
     subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
 ```
-
-#####Southern Africa 
-```{r plot_SouthernAfrica, results="asis", fig.align="left", out.width="600px", out.height="400px"}
-
-dtafig<-dtacurve%>%
-    mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(region=="Southern Africa")
-
-maxy<-max(dtafig$newcasessmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
-
-dtafig%>%
-    group_by(country) %>%
-    do(p = panel(.)) %>%
-    subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
-```
-
----
-
-####__Asia__
-
-#####Central Asia
-```{r plot_CentralAsia, results="asis", fig.align="left", out.width="800px", out.height="200px"}
-
-dtafig<-dtacurve%>%
-    mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(region=="Central Asia")
-
-maxy<-max(dtafig$newcasessmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
-
-dtafig%>%
-    group_by(country) %>%
-    do(p = panel(.)) %>%
-    subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
-```
-
-#####Central Asia
-```{r plot_SouthEasternAsia, results="asis", fig.align="left", out.width="800px", out.height="600px"}
-
-dtafig<-dtacurve%>%
-    mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(region=="South-Eastern Asia")
-
-maxy<-max(dtafig$newcasessmoothpp)
-nobs<-ceiling(length(unique(dtafig$country))/4)
-
-dtafig%>%
-    group_by(country) %>%
-    do(p = panel(.)) %>%
-    subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
-```
-
 ---
 
 <p style="color:gray">
