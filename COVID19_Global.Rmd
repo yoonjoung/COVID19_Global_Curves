@@ -174,11 +174,11 @@ dta<-dta%>%
         newdeathssmooth=c(NA,NA,NA,NA,NA,NA,rollmean(newdeaths, 7)), 
         newcasessmooth=ifelse(country !=lag(country ), NA, newcasessmooth),
         newdeathssmooth=ifelse(country !=lag(country ), NA, newdeathssmooth),
-        newcasessmooth =round(newcasessmooth, 3),  
-        newdeathssmooth=round(newdeathssmooth, 3),
+        newcasessmooth =round(newcasessmooth, 5),  
+        newdeathssmooth=round(newdeathssmooth, 5),
 
-        newcasessmoothpp=round(100*newcasessmooth/pop, 1),   
-        newdeathssmoothpp=round(100*newdeathssmooth/pop, 3)
+        newcasessmoothpp=round(100*newcasessmooth/pop, 3),   
+        newdeathssmoothpp=round(100*newdeathssmooth/pop, 5)
     )
 
 #data quality problem: cumulative deaths and acses going down in some cases 
@@ -252,11 +252,11 @@ dtaregion<-dta%>%
         newdeathssmooth=c(NA,NA,NA,NA,NA,NA,rollmean(newdeaths, 7)), 
         newcasessmooth=ifelse(WHO_REGION !=lag(WHO_REGION ), NA, newcasessmooth),
         newdeathssmooth=ifelse(WHO_REGION !=lag(WHO_REGION ), NA, newdeathssmooth),
-        newcasessmooth =round(newcasessmooth, 3),  
-        newdeathssmooth=round(newdeathssmooth, 3),
+        newcasessmooth =round(newcasessmooth, 5),  
+        newdeathssmooth=round(newdeathssmooth, 5),
 
-        newcasessmoothpp=round(100*newcasessmooth/pop, 1),   
-        newdeathssmoothpp=round(100*newdeathssmooth/pop, 3)
+        newcasessmoothpp=round(100*newcasessmooth/pop, 3),   
+        newdeathssmoothpp=round(100*newdeathssmooth/pop, 5)
     )
 
 #data quality problem: cumulative deaths and acses going down in some cases 
@@ -434,10 +434,10 @@ dtafig%>%
 
 ```
 
-```{r plot_USA, results="asis", fig.align="left", out.width="800px", out.height="400px"}
+```{r plot_Kenya, results="asis", fig.align="left", out.width="800px", out.height="400px"}
 dtafig<-dtacurve%>%
     mutate(latestcasespp=round(ifelse(latest==FALSE, NA, latestcasespp), 0))%>%
-    filter(country=="United States of America")
+    filter(country=="Kenya")
 
 mindate<-min(dtacurve$date)
 maxdate<-max(dtacurve$date)
@@ -486,10 +486,10 @@ dtafig%>%
     layout(
         showlegend = FALSE,
         yaxis=list(title="New cases per 100,000" , 
-                   range=c(0,maxy), showgrid = FALSE,
+                   range=c(0,5), showgrid = FALSE,
                    overlaying='y2', side="left"),
         yaxis2 = list(title = "New deaths per 100,000", 
-                      range=c(0,2), showgrid = FALSE,
+                      range=c(0,1), showgrid = FALSE,
                       side="right"),
         xaxis=list(title="" , range=c(mindate,maxdate), showgrid = FALSE)
         ) 
@@ -548,6 +548,7 @@ panel <- . %>%
 _Note: The x-axis is date since March. The y-axis is 7-day rolling average of daily new cases per 100,000 population. The light gray box represents the number of daily new cases 10 or lower per 100,000._  
 
 ####__AFRO__
+
 ```{r plot_SouthernAfrica, results="asis", fig.align="left", out.width="800px", out.height="2200px"}
 
 dtafig<-dtacurve%>%
@@ -562,9 +563,11 @@ dtafig%>%
     do(p = panel(.)) %>%
     subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
 ```
+
 ---
 
 ####__PAHO__ 
+
 ```{r plot_SouthAmerica, results="asis", fig.align="left", out.width="800px", out.height="1600px"}
 
 dtafig<-dtacurve%>%
@@ -579,6 +582,7 @@ dtafig%>%
     do(p = panel(.)) %>%
     subplot(nrows = nobs, shareX = TRUE, shareY = TRUE)  
 ```
+
 ---
 
 <p style="color:gray">
