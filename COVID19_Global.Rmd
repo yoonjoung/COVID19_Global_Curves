@@ -53,6 +53,15 @@ dtawhoregion<-dtawhoregion%>%
 #estimates:Total population, both sexes combined, as of 1 July (thousands)
 dtapop<-read_excel("C:/Users/YoonJoung Choi/Dropbox/0 Project/COVID19_SouthKorea/WPP2019/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
 
+dtapopworld<-dtapop%>%
+    rename(country = "Region, subregion, country or area *",
+           pop = "2020",
+           countrycode = "Country code")%>%
+    filter(Type=="World")%>%
+    select(country, pop, region)%>%
+    mutate(pop=as.numeric(pop))%>%
+    mutate(WHO_REGION="")
+
 dtapop<-dtapop%>%
     rename(country = "Region, subregion, country or area *",
            pop = "2020",
@@ -136,6 +145,59 @@ dtacovid<-dtacovid%>%
         country=ifelse(country=="Vietnam","Viet Nam", country),
         country=ifelse(country=="West Bank and Gaza","State of Palestine", country)
         )
+```
+
+```{r dtaCOVIDworld}
+url<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+dtacasesworld<-read.csv(url)%>%
+    rename(country = Country.Region,
+           region = Province.State)%>%
+    gather(variable, value, starts_with("X"))%>%
+    rename(date = variable,
+           cases = value)%>%
+    select(date, cases)%>%
+    group_by(date)%>%
+    summarize_all(funs(sum))%>%ungroup()%>%
+    mutate(country="WORLD")
+
+url<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+dtadeathsworld<-read.csv(url)%>%
+    rename(country = Country.Region,
+           region = Province.State)%>%
+    gather(variable, value, starts_with("X"))%>%
+    rename(date = variable,
+           deaths = value)%>%
+    select(date, deaths)%>%
+    group_by(date)%>%
+    summarize_all(funs(sum))%>%ungroup()%>%
+    mutate(country="WORLD")
+
+str(dtacasesworld)
+str(dtadeathsworld)
+
+dtacovidworld<-left_join(dtacasesworld, dtadeathsworld, by = c("country", "date"))%>%
+    mutate(date=mdy(substring(date, 2)) )
+
+dim(dtacasesworld)
+dim(dtadeathsworld)
+dim(dtacovidworld)
+
+```
+
+```{r dtaAppendWorld}
+
+str(dtacovidworld)
+str(dtacovid)
+
+str(dtapopworld)
+str(dtapop)
+
+dtacovid<-rbind(dtacovid, dtacovidworld)
+dtapop<-rbind(dtapop, dtapopworld)
+
+dim(dtacovid)
+dim(dtapop)
+
 ```
 
 ```{r dta}
@@ -232,6 +294,7 @@ dtacurve<-dta%>%
 
 dtaregion<-dta%>%
     select(country, WHO_REGION, date, cases, deaths, pop)%>% 
+    filter(WHO_REGION!="")%>%
     arrange(WHO_REGION, date, country)%>%
     group_by(WHO_REGION, date)%>%
     summarise_at(vars(cases, deaths, pop), funs(sum))%>%
@@ -286,7 +349,7 @@ dtaregion<-dtaregion%>%
     
 ```
 
-```{r mregeregiondata}
+```{r mergeregiondata}
 colnames(dtacurve)
 colnames(dtaregion)
 
@@ -314,7 +377,7 @@ write.csv(dtacurveBrazil, "dtacurve_BrazilExample.csv")
 (Last updated on `r time`) 
 
 ```{r}
-ntotalcountries<-(length(unique(dtacurve$country)))
+ntotalcountries<-(length(unique(dtacurve$country))) - 1 
 ntotal<-nrow(dtacurve)
 #colnames(dtacurve)
 #table(dtacurve$region)
@@ -323,16 +386,21 @@ ntotal<-nrow(dtacurve)
 ###__1. Note on data__
 
 __Source Data__  
-1. All COVID-19 data (i.e., cumulative confirmed cases and deaths by day) come from [JHU/CSSE](https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data). Accessed on `r date`.    
+1. All COVID-19 data (i.e., cumulative confirmed cases and deaths by day) come from [JHU/CSSE](https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data). Accessed on `r time`.    
 2. All data on country population come from UN [World Population Prospects 2019 Revision](https://population.un.org/wpp/). Accessed on April 18, 2020.   
 
 See note in each source data site about methods and comparability over time and across countries.    
 
 ---
 
-__"COVID-19 status data" for dashboard: dtacurve_global.csv__    
-* Includes `r ntotalcountries` countries with both COVID-19 and population data.     
-* A total of `r ntotal` country-day-specific observations/rows included, as of `r date`.     
+__"COVID-19 status data" for dashboard: dtacurve_global.csv__      
+
+* Includes `r ntotalcountries` countries that have __both COVID-19 and population data__.     
+* For __global data__, see/filter "country" == "WORLD". This contains global aggregate numbers by date, including all countries/territories that may not be part of the `r ntotalcountries` countries.        
+* A total of `r ntotal` country-day-specific observations/rows included, as of `r date`.   
+
+---
+   
 * Variables/Columns:   
  [1] "country"          
  [2] "region" region classification from UN Pop Division    
@@ -366,6 +434,96 @@ __[18] "latestcasespp" latest 7-day rolling average of daily new reported cases 
 [30] "regionnewdeathssmooth" WHO REGIONAL aggregate    
 __[31] "regionnewcasessmoothpp" WHO REGIONAL aggregate* __    
 [32] "regionnewdeathssmoothpp" WHO REGIONAL aggregate</span>     
+
+#####Global data 
+
+_Note: The blue and pink lines are new cases and new deaths, respectively. The x-axis is date since March. The LEFT y-axis is 7-day rolling average of daily new cases. The RIGHT y-axis is 7-day rolling average of daily new deaths._  
+
+```{r plot_world, results="asis", fig.align="left", out.width="800px", out.height="400px"}
+dtafig<-dtacurve%>%
+    filter(country=="WORLD")
+
+mindate<-min(dtacurve$date)
+maxdate<-max(dtacurve$date)
+maxy<-max(dtafig$newcasessmooth)
+maxy2<-max(dtafig$newdeathssmooth)*2
+
+fig1<-dtafig%>% 
+    plot_ly(x = ~date)%>% 
+    add_lines(
+        y = ~newcasessmooth,
+        line= list(color = "#395F82"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> New cases: ', newcasessmooth)  )%>%
+    add_lines(
+        y = ~newdeathssmooth,
+        yaxis='y2',
+        line= list(color = "#9B617F"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> New deaths: ', newdeathssmooth)  )%>%    
+    add_annotations(
+        text = ~unique(country),
+        x = 0.5, y = 0.90, xref = "paper", yref = "paper",    
+        xanchor = "center", yanchor = "bottom", showarrow = FALSE,
+        font = list(size = 12)  )%>%
+    layout(
+        showlegend = FALSE,
+        yaxis=list(title="New cases" , 
+                   range=c(0,maxy), showgrid = FALSE,
+                   overlaying='y2', side="left"),
+        yaxis2 = list(title = "New deaths", 
+                      range=c(0,maxy2), showgrid = FALSE,
+                      side="right"),
+        xaxis=list(title="" , range=c(mindate,maxdate), showgrid = FALSE)
+        ) 
+
+maxy<-max(dtafig$cases)
+maxy2<-max(dtafig$deaths)*2
+
+fig2<-dtafig%>% 
+    plot_ly(x = ~date)%>% 
+    add_lines(
+        y = ~cases,
+        line= list(color = "#395F82"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> Cumulative cases: ', cases)  )%>%
+    add_lines(
+        y = ~deaths,
+        yaxis='y2',
+        line= list(color = "#9B617F"),  
+        hoverinfo = 'text',
+        text = ~paste(
+                      '</br> Country: ', country,          
+                      '</br> Date: ', date,
+                      '</br> Cumulative deaths: ', deaths)  )%>%    
+    add_annotations(
+        text = ~unique(country),
+        x = 0.5, y = 0.90, xref = "paper", yref = "paper",    
+        xanchor = "center", yanchor = "bottom", showarrow = FALSE,
+        font = list(size = 12)  )%>%
+    layout(
+        showlegend = FALSE,
+        yaxis=list(title="Cumulative cases" , 
+                   range=c(0,maxy), showgrid = FALSE,
+                   overlaying='y2', side="left"),
+        yaxis2 = list(title = "Cumulative deaths", 
+                      range=c(0,maxy2), showgrid = FALSE,
+                      side="right"),
+        xaxis=list(title="" , range=c(mindate,maxdate), showgrid = FALSE)
+        ) 
+
+fig1
+
+```
 
 #####Country examples
 
